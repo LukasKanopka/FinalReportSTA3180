@@ -1,8 +1,8 @@
 ---
-title: "FinalReport"
-author: "Laurynas Kanopka,  "
+title: "Used Car Analysis"
+author: "Laurynas Kanopka, Jaden Smith, Olivia Caruso, Darina Serik"
 date: "2025-04-10"
-output: html_document
+output: pdf_document
 ---
 
 ```{r setup, include=FALSE}
@@ -13,7 +13,7 @@ library(splines)
 
 ## R Markdown
 
-```{r cars}
+```{r cars, results='hold'}
 # Clean up our data and put it into a new csv file. 
 library(dplyr)
 library(stringr)
@@ -55,7 +55,7 @@ write.csv(cleaned_cars, "cleaned_cars.csv", row.names = FALSE)
 head(cleaned_cars)
 ```
 
-```{r no_null}
+```{r no_null, results='hold'}
 # Create a version with no null values
 
 # Read the cleaned data
@@ -132,21 +132,18 @@ plot(1:5, cv.err, type="b", col="seagreen", xlab="Polynomial Degree",
 # Fit optimal degree (example: 2)
 mod_poly <- lm(Price ~ poly(Mileage,2) + poly(Horsepower,2) + Accident + Model_year, 
                data=car_data)
+summary(mod_poly)
+
+# Residual diagnostics for log-transformed model
+par(mfrow=c(2,2))
+plot(mod_poly, pch=16, cex=0.4, col="seagreen")
+par(mfrow=c(1,1))
+
 
 ```
 
 
 
-```{r decision_tree, results='hold'}
-
-# Lab-style approach using recursive partitioning
-library(rpart)
-tree.mod <- rpart(Price ~ Mileage + Horsepower + Accident + Model_year, 
-                  data=car_data, method="anova")
-plot(tree.mod, uniform=TRUE, margin=0.1)
-text(tree.mod, cex=0.7)
-
-```
 
 
 ```{r bootstrap, results='hold'}
@@ -192,7 +189,47 @@ print(metrics)
 
 ```
 
+```{r random_forest}
+library(randomForest)
 
+set.seed(3180) 
+rf.fit <- randomForest(Price ~ Mileage + Horsepower + Accident + Model_year,
+                       data=car_data,
+                       importance=TRUE,
+                       ntree=500)
+
+# Variable importance plot
+varImpPlot(rf.fit, pch=16, col="blue", 
+           main="Variable Importance in Random Forest")
+
+# Get predictions and calculate metrics
+rf.pred <- predict(rf.fit, car_data)
+rf.resid <- car_data$Price - rf.pred
+
+# Add to model comparison table
+rfmetrics <- rbind(
+  metrics,
+  Random_Forest = c(
+    RMSE = sqrt(mean(rf.resid^2)),
+    MAE = mean(abs(rf.resid)),
+    R2 = cor(car_data$Price, rf.pred)^2  # Pseudo R^2
+  )
+)
+
+# Update comparison table
+print(rfmetrics)
+
+```
+
+```{r decision_tree, results='hold'}
+
+library(rpart)
+tree.mod <- rpart(Price ~ Mileage + Horsepower + Accident + Model_year, 
+                  data=car_data, method="anova")
+plot(tree.mod, uniform=TRUE, margin=0.1)
+text(tree.mod, cex=0.7)
+
+```
 
 ```{r final_table, results='hold'}
 
