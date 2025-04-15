@@ -1,0 +1,313 @@
+---
+title: "Lab5 - STA3180"
+author: "Laurynas Kanopka"
+date: "2025-03-13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Part 1 - NAPA Valley Marathion - 2015
+
+
+```{r part1}
+## part (a)
+napa <- read.csv("http://www.stat.ufl.edu/~winner/data/napa_marathon_fm2015.csv")
+head(napa)
+
+napa.F <- napa[napa$Gender=="F",]
+napa.M <- napa[napa$Gender=="M",]
+napa.F <- napa.F[order(napa.F$Age),]
+napa.M <- napa.M[order(napa.M$Age),]
+
+## part (b)
+summary(napa.F$mph); var(napa.F$mph); (N.F <- length(napa.F$mph))
+summary(napa.M$mph); var(napa.M$mph); (N.M <- length(napa.M$mph))
+
+## part (c)
+par(mfrow=c(2,1))
+hist(napa.F$mph, breaks=seq(4,11,.25), col="pink2", border="black")
+hist(napa.M$mph, breaks=seq(4,11,.25), col="royalblue", border="black")
+par(mfrow=c(1,1))
+
+## part (d)
+beta.F <- mean(napa.F$mph)/var(napa.F$mph); beta.M <- mean(napa.M$mph)/var(napa.M$mph)
+alpha.F <- beta.F*mean(napa.F$mph); alpha.M <- beta.M*mean(napa.F$mph)
+
+gamma.grid <- seq(4,11,.01)
+
+plot(gamma.grid, dgamma(gamma.grid, alpha.F, beta.F), type="l", col="pink2", lwd=2)
+lines(gamma.grid, dgamma(gamma.grid, alpha.M, beta.M), col="royalblue", lwd=2)
+
+## part (e)
+F.train <- sample(905, 453,replace=FALSE)
+M.train <- sample(977, 489,replace=FALSE)
+
+F.cv.err <- rep(0,6)
+M.cv.err <- rep(0,6)
+
+napa.F.train <- napa.F[F.train,]
+napa.M.train <- napa.M[M.train,]
+
+
+## part (f)
+library(boot)
+
+for (i1 in 1:6) {  
+F.fit <- glm(mph ~ poly(Age,i1), data=napa.F.train)
+F.cv.err[i1] <- cv.glm(napa.F.train, F.fit, K=10)$delta[1]
+M.fit <- glm(mph ~ poly(Age,i1), data=napa.M.train)
+M.cv.err[i1] <- cv.glm(napa.M.train, M.fit, K=10)$delta[1]
+}
+
+F.cv.err
+M.cv.err
+
+F.fit4 <- lm(mph ~ poly(Age,4), data=napa.F.train)
+M.fit2 <- lm(mph ~ poly(Age,2), data=napa.M.train)
+
+Age.grid <- seq(15, 80, .05)
+
+F.pred4 <- predict(F.fit4, list(Age=Age.grid), se=TRUE)
+M.pred2 <- predict(M.fit2, list(Age=Age.grid), se=TRUE)
+
+F.pred4.CI <- cbind(F.pred4$fit-2*F.pred4$se.fit,
+                    F.pred4$fit+2*F.pred4$se.fit)
+
+M.pred2.CI <- cbind(M.pred2$fit-2*M.pred2$se.fit,
+                    M.pred2$fit+2*M.pred2$se.fit)
+
+## part (g)
+plot(napa.F.train$mph ~ napa.F.train$Age, pch=16, cex=0.6)
+lines(Age.grid, F.pred4$fit, col="green2", lwd=2)
+matlines(Age.grid, F.pred4.CI, lwd=1.5, col="blue")
+
+
+plot(napa.M.train$mph ~ napa.M.train$Age, pch=16, cex=0.6)
+lines(Age.grid, M.pred2$fit, col="red", lwd=2)
+matlines(Age.grid, M.pred2.CI, lwd=1.5, col="blue")
+
+
+## part(h)
+F.fit4a <- lm(mph ~ poly(Age,4), data=napa.F, subset=F.train)
+M.fit2a <- lm(mph ~ poly(Age,2), data=napa.M, subset=M.train)
+(RMS.F4 <- mean((napa.F$mph-predict(F.fit4a, napa.F))[-F.train]^2))
+(RMS.M2 <- mean((napa.M$mph-predict(M.fit2a, napa.M))[-M.train]^2))
+
+## part (i)
+plot(napa.F$mph[-F.train] ~ napa.F$Age[-F.train], pch=16, cex=0.6)
+lines(Age.grid, F.pred4$fit, col="green2", lwd=2)
+
+plot(napa.M$mph[-M.train] ~ napa.M$Age[-M.train], pch=16, cex=0.6)
+lines(Age.grid, M.pred2$fit, col="red", lwd=2)
+
+## part (j)
+
+table(cut(napa.F$Age, breaks=c(15,seq(19,69,5),80)))
+
+mod.step.F <- lm(mph ~ cut(Age, breaks=c(15,seq(19,69,5),80)), data=napa.F)
+summary(mod.step.F)
+
+Age.grid1 <- cut(Age.grid, breaks=c(15,seq(19,69,5),80))
+
+yhat.step.F <- predict(mod.step.F)
+
+plot(napa.F$mph ~ napa.F$Age, pch=16, col="orange", cex=0.5)
+lines(napa.F$Age, yhat.step.F, col="blue", lwd=2)
+
+mod.step.M <- lm(mph ~ cut(Age, breaks=c(15,seq(19,69,5),80)), data=napa.M)
+summary(mod.step.M)
+
+yhat.step.M <- predict(mod.step.M)
+
+plot(napa.M$mph ~ napa.M$Age, pch=16, col="orange", cex=0.5)
+lines(napa.M$Age, yhat.step.M, col="blue", lwd=2)
+
+```
+
+
+### Part 2 - NFL Combine - 2014
+
+```{r part2}
+
+## parts (a) and (b)
+nfl.c1 <- read.fwf("http://www.stat.ufl.edu/~winner/data/nfl_combine_2014.dat",
+       header=F, width=c(25,22,rep(8,12)), col.names=c("player","school",
+       "position","allGrade", "height", "armLen", "weight",
+       "handLen", "time40", "benchPrs", "vertJmp", "broadJmp",
+       "cone3", "yard20"))
+head(nfl.c1)
+
+time40.df <- na.omit(nfl.c1[,c(5,7,9)])
+summary(time40.df$time40)
+length(time40.df$time40)
+
+benchPrs.df <- na.omit(nfl.c1[,c(5,7,10)])
+summary(benchPrs.df$benchPrs)
+length(benchPrs.df$benchPrs)
+
+time40.df$BMI <- 703*time40.df$weight/(time40.df$height^2)
+benchPrs.df$BMI <- 703*benchPrs.df$weight/(benchPrs.df$height^2)
+
+time40.df <- time40.df[order(time40.df$BMI),]
+benchPrs.df <- benchPrs.df[order(benchPrs.df$BMI),]
+
+## part (c)
+loess.bp <- loess(time40 ~ BMI, data=time40.df)
+BMI.grid <- seq(20,45,.01)
+yhat.loess.bp <- predict(loess.bp, data.frame(BMI=BMI.grid))
+
+plot(time40.df$time40 ~ time40.df$BMI, pch=16, cex=0.7)
+abline(lm(time40.df$time40 ~ time40.df$BMI), col="purple", lwd=2)
+lines(BMI.grid, yhat.loess.bp, col="gold", lwd=2)
+
+## part (d)
+bp.fit1 <- lm(benchPrs ~ poly(BMI, 1), data=benchPrs.df)
+bp.fit2 <- lm(benchPrs ~ poly(BMI, 2), data=benchPrs.df)
+bp.fit3 <- lm(benchPrs ~ poly(BMI, 3), data=benchPrs.df)
+bp.fit4 <- lm(benchPrs ~ poly(BMI, 4), data=benchPrs.df)
+
+
+bp.pred1 <- predict(bp.fit1, list(BMI=BMI.grid))
+bp.pred2 <- predict(bp.fit2, list(BMI=BMI.grid))
+bp.pred3 <- predict(bp.fit3, list(BMI=BMI.grid))
+bp.pred4 <- predict(bp.fit4, list(BMI=BMI.grid))
+
+plot(benchPrs.df$benchPrs ~ benchPrs.df$BMI, pch=16, cex=0.7)
+lines(BMI.grid, bp.pred1, col="orange", lwd=2)
+lines(BMI.grid, bp.pred2, col="gold", lwd=2)
+lines(BMI.grid, bp.pred3, col="seagreen", lwd=2)
+lines(BMI.grid, bp.pred4, col="royalblue", lwd=2)
+
+```
+
+### Part 3 - Anita Wlodarczyk Hammer Throw Distance - 2004/2024
+
+```{r part3}
+
+## part (a)
+anita.df <- read.csv("http://www.stat.ufl.edu/~winner/data/anitaw_hammer.csv")
+head(anita.df)
+
+anita.df$yearsOld <- anita.df$DaysOld/365.25
+(n <- nrow(anita.df))
+
+anita.df$personalBest <- c(1, rep(0,n-1))
+
+for (i1 in 2:n) {
+  if(anita.df$Distance[i1] > max(anita.df$Distance[1:(i1-1)]))  anita.df$personalBest[i1] <- 1
+}
+
+## part (b)
+plot(anita.df$Distance ~ anita.df$yearsOld, pch=16, cex=0.7)
+
+## part (c)
+library(boot)
+
+hammer.cv.err <- rep(0, 10)
+
+for (i1 in 1:10) {
+  poly.fit <- glm(Distance ~ poly(yearsOld,i1), data=anita.df)
+  hammer.cv.err[i1] <- cv.glm(anita.df, poly.fit, K=10)$delta[1]
+}
+
+hammer.cv.err
+
+### Technically lowest is at 9, but a "local minimum" at 7 (based on this run). I will plot 7-order
+
+poly.fit7 <- lm(Distance ~ poly(yearsOld, 7), data=anita.df)
+year.grid <- seq(floor(min(anita.df$yearsOld)),ceiling(max(anita.df$yearsOld)),length=1001)
+yhat.7 <- predict(poly.fit7, list(yearsOld=year.grid), se=TRUE)
+CI.7 <- cbind(yhat.7$fit-2*yhat.7$se.fit,
+              yhat.7$fit+2*yhat.7$se.fit)
+
+plot(anita.df$Distance ~ anita.df$yearsOld, pch=16, cex=0.7, col="green3")
+lines(year.grid, yhat.7$fit, col="blue", lwd=2)
+matlines(year.grid, CI.7, col="red", lwd=1.75, lty=1)
+
+## part (d)
+
+library(lubridate)
+## Construct a variable that is "continuous" within calendar year for datae of throw
+
+yearDate <- yday(anita.df$Date1)
+head(yearDate,20)
+
+anita.df$yearDate1 <- anita.df$Year + yearDate/365
+head(anita.df$yearDate1, 20)
+
+mod.step <- lm(Distance ~ factor(Year), data=anita.df)
+summary(mod.step)
+
+years.grid <- c(seq(2004,2019.99,0.01),seq(2021,2024.99,.01))
+
+yhat.step <- predict(mod.step, list(Year=floor(years.grid)), se=TRUE)
+se.bands <- cbind(yhat.step$fit - 2*yhat.step$se.fit,
+                  yhat.step$fit + 2*yhat.step$se.fit)
+
+plot(anita.df$Distance ~ anita.df$yearDate1, pch=16, col="red", cex=0.6, 
+   xlim=c(2003, 2025), ylim=c(40,100), xlab="Years", ylab="Distance",
+   main="Anita W - Hammer Throws by Year - Step Function")
+lines(years.grid, yhat.step$fit, col="blue", lwd=2)
+matlines(years.grid, se.bands, lwd=1.5, col="green3", lty=1)
+
+## part (e)
+
+logit.mod <- glm(personalBest ~ yearsOld, data=anita.df, binomial)
+summary(logit.mod)
+
+logit.pred <- predict(logit.mod, list(yearsOld=year.grid), se=TRUE)
+logit.CI <- cbind(logit.pred$fit - 2*logit.pred$se.fit,
+                  logit.pred$fit + 2*logit.pred$se.fit)
+
+plot(anita.df$personalBest ~ anita.df$yearsOld, pch=16, col="blue", cex=0.7)
+lines(year.grid, exp(logit.pred$fit)/(1+exp(logit.pred$fit)), col="purple", lwd=2)
+matlines(year.grid, exp(logit.CI)/(1+exp(logit.CI)), col="red", lwd=2, lty=1)
+
+## part (f)
+
+## Direct approach
+
+spline1 <- lm(Distance ~ yearDate1 + I(yearDate1^2) + I(yearDate1^3) +
+                I((yearDate1>2008)*(yearDate1-2008)^3) + 
+                I((yearDate1>2012)*(yearDate1-2012)^3) +
+                I((yearDate1>2016)*(yearDate1-2016)^3) +
+                I((yearDate1>2020)*(yearDate1-2020)^3), data=anita.df)
+
+years.grid <- seq(2004,2024.99,.01)
+
+yhat.spline1 <- predict(spline1, list(yearDate1=years.grid))
+
+plot(anita.df$Distance ~ anita.df$yearDate1, pch=16, col="red", cex=0.5, xlim=c(2003,2025),
+    main="Cubic Spline")
+lines(years.grid, yhat.spline1, col="blue", lwd=2)
+abline(v=c(2008,2012,2016,2020), col="green4", lwd=1.5)
+
+## Using splines package
+
+library(splines)
+attach(anita.df)
+
+spline2 <- lm(Distance~bs(yearDate1,knots=c(2008,2012,2016,2020)),data=anita.df)
+yhat.spline2 <- predict(spline2,newdata=list(yearDate1=years.grid),se=T)
+plot(yearDate1,Distance,col="blue", pch=16, cex=0.7)
+lines(years.grid,yhat.spline2$fit,lwd=2, col="red")
+lines(years.grid,yhat.spline2$fit+2*yhat.spline2$se,col="green3")
+lines(years.grid,yhat.spline2$fit-2*yhat.spline2$se,col="green3")
+abline(v=seq(2008,2020,4), col="purple", lwd=1.5)
+
+
+
+spline3 <- lm(Distance~ns(yearDate1,knots=c(2012,2016)),
+              Boundary.knots=c(2008,2020),data=anita.df)
+yhat.spline3 <- predict(spline3,newdata=list(yearDate1=years.grid),se=T)
+plot(yearDate1,Distance,col="blue", pch=16, cex=0.7)
+lines(years.grid,yhat.spline3$fit,lwd=2, col="red")
+lines(years.grid,yhat.spline3$fit+2*yhat.spline3$se,col="green3")
+lines(years.grid,yhat.spline3$fit-2*yhat.spline3$se,col="green3")
+abline(v=seq(2008,2020,4), col="purple", lwd=1.5)
+
+```
+```

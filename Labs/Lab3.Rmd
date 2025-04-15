@@ -1,0 +1,254 @@
+---
+title: "Lab3"
+author: "Laurynas Kanopka"
+date: "2025-02-11"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Part 1: Classification of EPL and NHL Payers by Body Mass Index 
+
+
+```{r part1}
+epl_nhl_bmi <- read.csv("http://www.stat.ufl.edu/~winner/data/epl_nhl_bmi.csv",
+                       header=T)
+attach(epl_nhl_bmi); names(epl_nhl_bmi); head(epl_nhl_bmi)
+## League = 1 => EPL   League = 2 => NHL
+
+### Obtain population sizes, means, and variances
+BMI.EPL <- BMI[League==1]
+BMI.NHL <- BMI[League==2]
+(N.EPL <- length(BMI.EPL))
+(N.NHL <- length(BMI.NHL))
+(mu.EPL <- mean(BMI.EPL))
+(mu.NHL <- mean(BMI.NHL))
+(sigma.EPL <- sd(BMI.EPL))
+(sigma.NHL <- sd(BMI.NHL))
+(pi.EPL <- N.EPL/(N.EPL+N.NHL))
+(pi.NHL <- N.NHL/(N.EPL+N.NHL))
+
+### Histograms of BMI by League
+par(mfrow=c(2,1))
+hist(BMI.EPL, breaks=32, col="coral", border="green3", xlim=c(18,34),
+     xlab="BMI", main="EPL")
+hist(BMI.NHL, breaks=32, col="coral", border="green3",xlim=c(18,34),
+     xlab="BMI", main="NHL")
+par(mfrow=c(1,1))
+
+### Idealized Normal Distributions
+
+bmi.grid <- seq(18,34,.01)
+plot(bmi.grid, dnorm(bmi.grid, mu.EPL, sigma.EPL), type="l",
+    col="green4", lwd=2, ylim=c(0,0.3))
+lines(bmi.grid, dnorm(bmi.grid, mu.NHL, sigma.NHL), 
+    col="purple", lwd=2)
+legend("topright", c("EPL ~ N(23.02,1.713^2)","NHL ~ N(26.50,1.455^2)"),
+     lty=1, col=c("green4", "purple"))
+
+###
+### Take training samples from each league of half of their players
+set.seed(12345)
+EPL.train <- sample(N.EPL, N.EPL/2)
+NHL.train <- sample(N.NHL, N.NHL/2)
+EPL.test <- (-EPL.train)
+NHL.test <- (-NHL.train)
+
+(mu.EPL.train <- mean(BMI.EPL[EPL.train]))
+(mu.NHL.train <- mean(BMI.NHL[NHL.train]))
+sigma.EPL.train <- sd(BMI.EPL[EPL.train])
+sigma.NHL.train <- sd(BMI.NHL[NHL.train])
+N.EPL.train <- length(BMI.EPL[EPL.train])
+N.NHL.train <- length(BMI.NHL[NHL.train])
+(sigma.train <- sqrt(pi.EPL*sigma.EPL.train^2 + pi.NHL*sigma.NHL.train^2))
+
+#prob.EPL.NHL <- function(x) {
+#  prob.EPL.1 <- pi.EPL * dnorm(x,mu.EPL.train,sigma.train)
+#  prob.NHL.1 <- pi.NHL * dnorm(x,mu.NHL.train,sigma.train)
+#  prob.EPL <- prob.EPL.1/(prob.EPL.1+prob.NHL.1)
+#  prob.NHL <- prob.NHL.1/(prob.EPL.1+prob.NHL.1)
+#  prob.out <- list(prob.EPL, prob.NHL)
+#  return(prob.out)
+#}
+
+x.star.train <- 
+   (log(pi.EPL/pi.NHL)+(mu.NHL.train^2-mu.EPL.train^2)/(2*sigma.train^2)) /
+   ((mu.NHL.train-mu.EPL.train)/sigma.train^2)
+x.star.train
+
+### Idealized Normal Distributions
+
+bmi.grid <- seq(18,34,.01)
+plot(bmi.grid, dnorm(bmi.grid, mu.EPL.train, sigma.train), type="l",
+    col="green4", lwd=2, ylim=c(0,0.3))
+lines(bmi.grid, dnorm(bmi.grid, mu.NHL.train, sigma.train), 
+    col="purple", lwd=2)
+abline(v=x.star.train, col="blue", lwd=2)
+legend("topright", 
+     c("EPL ~ N(22.98,1.628^2)","NHL ~ N(26.51,1.628^2)", "x*=24.51"),
+     lty=1, col=c("green4", "purple", "blue"))
+
+
+#prob.EPL.NHL(24.51123)
+
+BMI.EPL.test <- BMI.EPL[EPL.test]
+BMI.NHL.test <- BMI.NHL[NHL.test]
+
+BMI.test.actual <- c(rep("EPL",length(BMI.EPL.test)),
+                     rep("NHL",length(BMI.NHL.test)))
+BMI.EPL.classify <- ifelse(BMI.EPL.test <= x.star.train, "EPL", "NHL")
+BMI.NHL.classify <- ifelse(BMI.NHL.test <= x.star.train, "EPL", "NHL")
+BMI.test.classify <- c(BMI.EPL.classify, BMI.NHL.classify)
+
+(conf.tab <- table(Actual=BMI.test.actual, predicted=BMI.test.classify))
+prop.table(conf.tab,1)
+prop.table(conf.tab,2)
+
+# added printed sensitivity, specificity, positive, and negative predictive values for clarity 
+TP <- conf.tab[1,1]
+FP <- conf.tab[2,1]
+FN <- conf.tab[1,2] 
+TN <- conf.tab[2,2]  
+
+
+sensitivity <- TP / (TP + FN)  
+specificity <- TN / (TN + FP)  
+PPV <- TP / (TP + FP)  
+NPV <- TN / (TN + FN)
+
+
+cat(sprintf("Sensitivity: %.4f\n", sensitivity))
+cat(sprintf("Specificity: %.4f\n", specificity))
+cat(sprintf("Positive Predictive Value: %.4f\n", PPV))
+cat(sprintf("Negative Predictive Value: %.4f\n", NPV))
+
+detach(epl_nhl_bmi)
+
+```
+
+``` {r part2}
+golf <- read.table("http://www.stat.ufl.edu/~winner/data/pgalpga2008.dat",
+   header=F,col.names=c("distance","accuracy","gender"))
+head(golf); tail(golf)
+attach(golf)
+
+
+(n.F <- length(gender[gender==1]))       ## Number of Females
+(n.M <- length(gender[gender==2]))       ## Number of Males
+(n.T <- n.F + n.M)                       ## Total across Genders
+(pi.F <- n.F / n.T)                      ## Probability of Female
+(pi.M <- 1 - pi.F)                       ## Probability of Male
+
+## Histograms of Distance and Accuracy Across Genders
+par(mfrow=c(2,1))
+hist(distance,freq=F,breaks=seq(215,325,2.5),col="orange", border="blue")
+lines(density(distance))
+
+hist(accuracy,freq=F,breaks=seq(40,90,2.5),col="orange", border="blue")
+lines(density(accuracy))
+
+
+## Histograms of Distance and Accuracy by Gender
+par(mfrow=c(2,2))
+
+hist(distance[gender==1],freq=F,breaks=seq(215,325,2.5),
+  col="orange", border="blue",  main="Female Distance")
+lines(density(distance[gender==1]))
+
+hist(distance[gender==2],freq=F,breaks=seq(215,325,2.5),
+  col="orange", border="blue", main="Male Distance")
+lines(density(distance[gender==2]))
+
+hist(accuracy[gender==1],freq=F,breaks=seq(40,90,2.5),
+     col="orange", border="blue", main="Female Accuracy")
+lines(density(accuracy[gender==1]))
+
+hist(accuracy[gender==2],freq=F,breaks=seq(40,90,2.5),
+   col="orange", border="blue",main="Male Accuracy")
+lines(density(accuracy[gender==2]))
+
+## Compute and Save Means, SDs by Gender/Variable and Correlation w/in Gender
+(muD.F <- mean(distance[gender==1])); (sigmaD.F <- sd(distance[gender==1]))
+(muA.F <- mean(accuracy[gender==1])); (sigmaA.F <- sd(accuracy[gender==1]))
+(rho.F <- cor(distance[gender==1],accuracy[gender==1]))
+
+(muD.M <- mean(distance[gender==2])); (sigmaD.M <- sd(distance[gender==2]))
+(muA.M <- mean(accuracy[gender==2])); (sigmaA.M <- sd(accuracy[gender==2]))
+(rho.M <- cor(distance[gender==2],accuracy[gender==2]))
+
+## Plot Accuracy vs Distance w/ Separate Plotting Characters by Gender 
+par(mfrow=c(1,1))
+plot(distance,accuracy,pch=16, cex=0.7, col=gender+1)
+legend("topright",c("Female","Male"),pch=16, col=c(2,3))
+
+## Generate 2 x N matrix, Row 1 = Distance, Row 2 = Accuracy, Columns=Golfers
+##   "Short/Fat" as opposed to "Tall/Thin" X-matrix 
+##       makes density evaluations easier below 
+X <- matrix(rep(0,2*n.T),ncol=n.T)
+for (i in 1:(n.F+n.M))  {
+  X[1,i] <- distance[i]; X[2,i] <- accuracy[i]
+}
+
+## Generate mu (mean) vectors and Sigma (covariance) matrices by Gender
+mu.F <- matrix(c(muD.F,muA.F), ncol=1)
+mu.M <- matrix(c(muD.M,muA.M), ncol=1)
+
+Sigma.F <- matrix(c(sigmaD.F^2, rho.F*sigmaD.F*sigmaA.F,
+                  rho.F*sigmaD.F*sigmaA.F, sigmaA.F^2), ncol=2)
+
+Sigma.M <- matrix(c(sigmaD.M^2, rho.M*sigmaD.M*sigmaA.M,
+                  rho.M*sigmaD.M*sigmaA.M, sigmaA.M^2), ncol=2)
+
+## Pooled Variance-Covariance Matrix (Common Variance-Covariance Matrices)
+Sigma.FM <- ((n.F-1)*Sigma.F + (n.M-1)*Sigma.M) / (n.F+n.M-2)
+Sigma.FM.inv <- solve(Sigma.FM)        # inverse(Sigma.FM)
+
+## Set up Normal Densities (F and M) evaluated at x for each golfer
+fF.X <- rep(0,n.T); fM.X <- rep(0,n.T)
+p <- nrow(X)
+norm.c <- 1/(((2*3.14159)^(p/2))*sqrt(det(Sigma.FM)))
+
+for (i in 1:n.T)  {
+fF.X[i] <- norm.c*
+    exp(-0.5*(t(X[,i]-mu.F) %*% Sigma.FM.inv %*% (X[,i]-mu.F)))
+fM.X[i] <- norm.c*
+    exp(-0.5*(t(X[,i]-mu.M) %*% Sigma.FM.inv %*% (X[,i]-mu.M)))
+}
+
+## Classify golfer as Female (1) or Male (2) based on ratio of F/M Densities
+classify <- ifelse((pi.F*fF.X)/(pi.M*fM.X) >= 1,1,2)
+
+## Confusion Matrix
+(CF.mat <- table(Actual=gender,Predicted=classify))
+
+
+## Print out mu Vectors, Sigma Matrices
+Sigma.out <- cbind(mu.F,mu.M,Sigma.F,Sigma.M,Sigma.FM)
+colnames(Sigma.out) <- 
+   c("mu.F","mu.M","Sigma.F","","Sigma.M","","Sigma.FM","")
+rownames(Sigma.out) <- c("Distance", "Accuracy")
+round(Sigma.out,3)
+
+## Set up Classification Line: Accuracy = (b3 - b1*Distance) / b2
+b12 <- t(mu.F - mu.M) %*% solve(Sigma.FM)
+b1 <- b12[1,1];  b2 <- b12[1,2]
+b3 <-  log(pi.M/pi.F) + 
+    0.5 * t(mu.F) %*% solve(Sigma.FM) %*% mu.F -
+    0.5 * t(mu.M) %*% solve(Sigma.FM) %*% mu.M  
+b3 <- b3[1,1]                                    ## Makes scalar from matrix 
+
+## Plot Accuracy vs Distance w/ Separate Plotting Characters by Gender 
+par(mfrow=c(1,1))
+dist.seq <- seq(220,320,.1)
+disc.line <- (b3/b2) - (b1/b2)*dist.seq
+
+plot(distance,accuracy,pch=16, cex=0.7, col=gender*2)
+lines(dist.seq, disc.line, col="green3", lwd=2)
+legend("topright",c("Female","Male"),pch=16, col=c(2,4))
+
+detach(golf)
+rm(list=ls(all=TRUE))
+```
+

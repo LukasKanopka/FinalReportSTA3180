@@ -1,0 +1,223 @@
+---
+title: "STA 3180 - Lab 1"
+author: "Laurynas Lukas Kanopka"
+date: "2025-01-20"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Part 1 - Revenues and Costs of RKO Movies 1930-1941
+
+#### a) Read in the Dataset, remove movies that are re-releases, and create a variable that represents total costs (Production+Distribution)
+
+```{r Part1a}
+
+
+rko <- read.fwf("http://www.stat.ufl.edu/~winner/data/rko_film_19301941.dat",
+                header=F, widths=c(25,rep(8,7),7,9,7,7),
+                col.names = c("film","re.release","prodCost","domRev","forRev","totRev",
+                              "profit","distCost","distCost_Rev","distCost_prodCost",
+                              "year","proft_totCost"))
+head(rko); tail(rko)
+
+# Create data frame that removes re-releases
+rko1 <- rko[rko$re.release ==  0,]
+attach(rko1)
+
+# Create Total Costs variable
+totCost <- prodCost + distCost
+
+```
+
+#### b) Plot total revenue (Y) versus total cost (X). Does the relationship appear to be approximately linear?
+```{r Part1b}
+
+# Plot Total Revenue vs Total Cost (using pch=16, cex=0.7 makes easier viewing than defaults)
+plot(totRev ~ totCost, pch=16, cex=0.7, col="seagreen")
+```
+
+#### conclusions for b)
+Yes the relationship appears to be approximately linear
+
+
+#### c) Fit a simple linear regression relating the total revenue (Y) to total costs (X) and give the fitted equation.
+```{r Part1c}
+
+# Fit simple linear regression
+part1.mod1 <- lm(totRev ~ totCost)
+summary(part1.mod1)
+
+#idx 1 intercept, idx 2 slope
+coef <- coef(part1.mod1)
+
+cat("Fitted Equation: ", "y = ", coef[2], "x + " , coef[1], sep ="")
+
+
+```
+
+#### d) Add the regression line to the scatter plot in part b).
+```{r Part1d}
+
+# Plot data and regression line
+plot(totRev ~ totCost, pch=16, cex=0.7, col="seagreen")
+abline(part1.mod1, col="orange", lwd=2)
+```
+
+#### e) On a 2x2 plotting grid, give the 4 default residual plots from the model. Are any of the assumptions clearly violated?
+```{r Part1e}
+
+# Give residual plots from the regression fit (2x2 grid)
+par(mfrow=c(2,2))
+plot(part1.mod1)
+par(mfrow=c(1,1))
+```
+
+#### Conclusions for d) 
+Yes. We can see that the assumption of equal variances is violated as both the Residuals vs Fitted graph and the Scale-Location graph have cone shaped plots. From the Q-Q plot, we can see that the data is relatively normal but does have some deviation along each of the tails. We also have one outlier on the Residuals vs Leverage plot which could possibly make it an influential outlier.
+
+#### f) Re-fit the model with the response log(total revenue) and predictor log(total cost). Notice the extreme outlier. Does it appear to be a high leverage case?
+```{r Part1f}
+# Re-fit the model, with log(Y) as response and log(X) as predictor
+part1.mod2 <- lm(log(totRev) ~ log(totCost))
+summary(part1.mod2)
+
+par(mfrow=c(2,2))
+plot(part1.mod2)
+par(mfrow=c(1,1))
+```
+
+#### Conclusions for f)
+After the log transformation, the extreme outlier has less leverage on the data and also falls close to the line, meaning that it does not disproportionately influence the regression. Therefore after the log transformation the point is no longer a high leverage case.
+```{r Part1.end}
+detach(rko1)
+rm(list=ls(all=TRUE))
+```
+
+### Part 2 - Fuel Consumption and Speed for Container Ships
+#### a) Read in the dataset, and select the observations corresponding to ship_leg 1(3000-TEU Singapore-Jakarta).
+```{r Part2a}
+ssf <- read.csv("http://www.stat.ufl.edu/~winner/data/ship_speed_fuel.csv")
+head(ssf); tail(ssf)
+
+# Use only data from first ship leg
+ssf1 <- ssf[ssf$ship_leg == 1,]
+attach(ssf1)
+```
+#### b) Plot the fuel (Y) versus the speed (X) and comment on relationship.
+```{r Part2b}
+# Plot fuel vs speed
+plot(fuel ~ speed, pch=16, col="pink2")
+```
+
+#### c) Fit three models relating fuel to speed: Linear, quadratic, and cubic and plot them with the data.
+
+```{r Part2c}
+# Fit linear, quadratic, and cubic models
+part2.mod1 <- lm(fuel ~ speed)
+summary(part2.mod1)
+part2.mod2 <- lm(fuel ~ speed + I(speed^2))
+summary(part2.mod2)
+part2.mod3 <- lm(fuel ~ speed + I(speed^2) + I(speed^3))
+summary(part2.mod3)
+
+# Plot fits on single plot
+speed.grid <- seq(floor(min(speed)-1), ceiling(max(speed)+1), 0.01)
+plot(fuel ~ speed, pch=16, col="lightsalmon")
+lines(speed.grid, predict(part2.mod1, list(speed=speed.grid)), col="powderblue", lwd=2)
+lines(speed.grid, predict(part2.mod2, list(speed=speed.grid)), col="red", lwd=2)
+lines(speed.grid, predict(part2.mod3, list(speed=speed.grid)), col="darkseagreen2", lwd=2)
+legend("topright", c("Data", "Linear", "Quadratic", "Cubic"), pch=c(16,NA,NA,NA),
+       col=c("lightsalmon", "powderblue", "red", "darkseagreen2"), lwd=c(NA,2,2,2))
+```
+
+
+#### d) Test whether the cubic regression coefficient is significantly different from 0 after including the linear and quadratic terms.
+```{r Part2d}
+summary(part2.mod3)
+```
+
+#### Conclusions for d)
+Our p value for the cubic regression coefficient us 0.801, which is much larger than our alpha of 0.05. Therefore, we fail to reject the null hypothesis that the cubic regression coefficient is significantly different from 0. We conclude that the cubic regression coeficcient does not significantly improve the regression model after including the linear and quadratic terms.
+
+
+#### e) What proportion of the variation in fuel is "explained" by each model?
+```{r Part2e}
+summary(part2.mod1)$r.squared
+summary(part2.mod2)$r.squared
+summary(part2.mod3)$r.squared
+```
+
+#### Conclusions for e) 
+We can observe from out r squared values that the proportion of the variation in fuel is "explained" by each model is 0.951746, 0.9884464, and 0.9884938 in respect to the linear, quadratic, and cubic models
+
+```{r Part2.end}
+detach(ssf1)
+rm(list=ls(all=TRUE))
+```
+
+### Part 3: Sewing Thread Consumption
+
+#### a) Read in the dataset and plot sewThrdCns versus thick, stitchDen, and as.factor(cotton) on a 1x3 plotting grid.
+```{r Part3a}
+stc <- read.csv("http://www.stat.ufl.edu/~winner/data/sewingthread.csv")
+head(stc); tail(stc)
+attach(stc)
+
+# Plots of sewThrdCns vs thick, stitchDen, as.factor(cotton)
+par(mfrow=c(1,3))
+plot(sewThrdCns ~ thick, pch=16, col="purple")
+plot(sewThrdCns ~ stitchDen, pch=16, col="blue")
+plot(sewThrdCns ~ as.factor(cotton), col="orange")
+par(mfrow=c(1,1))
+```
+
+#### b) Fit an additive multiple linear regression model with Y = sewThrdCns, X1 = thick, X2 = stitchDen, and X3 = 1 if cotton, 0 if polyester.
+```{r Part3b}
+# Fit additive model
+part3.mod1 <- lm(sewThrdCns ~ thick + stitchDen + cotton)
+summary(part3.mod1)
+```
+
+#### c) Test H0: b1 = b2 = b3 = 0.
+```{r Part3c}
+# ANOVA to test if coefficients for thick, stitchDen, and cotton are all 0
+anova(part3.mod1)
+```
+#### Conclusions for c)
+looking at our P values for "thick", "stitchDen", and "cotton", our P values for all three of these variables are below our alpha of 0.05. Therefore, we reject the null hypothesis and conclude that the coefficients for thick, stitchDen, and cotton are not 0 and therefore contribute significantly to the prediction of sew thread consumption.
+
+
+#### d) Fit a model with all two-way interactions among thick, stitchDen, and cotton.
+```{r Part3d}
+# Fit model with all 2-Way interactions
+part3.mod2 <- lm(sewThrdCns ~ thick + stitchDen + cotton + I(thick*stitchDen) + I(thick*cotton) + I(stitchDen*cotton))
+summary(part3.mod2)
+```
+
+#### e) Test whether the interaction effects are all 0 (Full model, p=6, reduced model, p-q=3).
+```{r Part3e}
+# Test whether interaction effects are 0
+anova(part3.mod1, part3.mod2)
+```
+#### Conclusions for e)
+We can observe that our p value is 9.876e-05, which is much smaller than our alpha of 0.05. From this, we reject the null. We can conclude that there is statistically significant evidence to show that adding the interaction effects into our model significally improve our ability to predict sew thread consumption.
+
+
+#### f) Based on the model in part d), give the predicted value for cases with specific parameters.
+```{r Part3f}
+# Predictions for specified cases
+predict(part3.mod2, list(thick=6.56, stitchDen=4, cotton=1))
+predict(part3.mod2, list(thick=6.56, stitchDen=4, cotton=0))
+```
+
+#### Conclusions for f)
+Our predicted values are 24.46324 for when thick=6.56, stitchDen=4, cotton=1 and 22.75938 for when thick=6.56, stitchDen=4, cotton=0).
+
+
+```{Part3.end}
+detach(stc)
+rm(list=ls(all=TRUE))
+```

@@ -1,0 +1,190 @@
+---
+title: "STA 3180 - Lab 2"
+author: "Laurynas Lukas Kanopka"
+date: "2025-02-06"
+output: html_document
+---
+  
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+
+## Part 1: Anthropometric Measurements for Lahoul and Kulu Kanets
+
+
+
+```{r part1}
+# a) Read in the Dataset, create a factor variable from group, and assign group names to levels
+data1 <- read.csv("http://www.stat.ufl.edu/~winner/data/kanet.csv")
+head(data1)
+attach(data1)
+
+group.f <- factor(group, levels=1:2, labels = c("Lahoul", "Kulu"))
+
+# b) On a 2x3 plotting grid, plot boxplots of height, armspan, seatHt, kneelHt, cubit, and leftFtLen by group
+
+par(mfrow=c(2,3))
+plot(height ~ group.f, col=c("orange" , "blue"))
+plot(armspan ~ group.f, col=c("orange" , "blue"))
+plot(seatHt ~ group.f, col=c("orange" , "blue"))
+plot(kneelHt ~ group.f, col=c("orange" , "blue"))
+plot(cubit ~ group.f, col=c("orange" , "blue"))
+plot(leftFtLen ~ group.f, col=c("orange" , "blue"))
+
+par(mfrow=c(1,1))
+
+# c) Fit all simple logistic regression models relating the group (Y=1 if Kulu, 0 if Lahoul) to each of the six predictors from part b) (X) and give the fitted equation for the best model, based on AIC.
+
+mod1a <- glm(group.f ~ height, binomial)
+mod1b <- glm(group.f ~ armspan, binomial)
+mod1c <- glm(group.f ~ seatHt, binomial)
+mod1d <- glm(group.f ~ kneelHt, binomial)
+mod1e <- glm(group.f ~ cubit, binomial)
+mod1f <- glm(group.f ~ leftFtLen, binomial)
+
+AIC(mod1a)
+AIC(mod1b)
+AIC(mod1c)
+AIC(mod1d)
+AIC(mod1e)
+AIC(mod1f)
+
+summary(mod1f)
+
+summary(leftFtLen)
+
+# Fitted equation for the best model based on AIC 
+coef <- coef(mod1f)
+cat("Fitted Equation: log(odds) = ", coef[2], " * leftFtLen + ", coef[1], sep="")
+
+# d) Plot the data and add the predicted regression curve from part c).
+lfl.grid <- seq(22, 28, 0.01)
+kulu <- group-1
+
+plot(kulu ~ leftFtLen, pch=16, col="blue", xlim=c(22,28), ylim=c(0,1))
+lines(lfl.grid, predict(mod1f, list(leftFtLen=lfl.grid), type="response"), 
+      col="red", lwd=2)
+
+# e) Fit all two-variable models including the predictor from c). Which is the best, based on AIC? Is it justified to add this variable, based on forward stepwise regression based on AIC?
+  
+mod2a <- glm(group.f ~ leftFtLen + height, binomial)
+mod2b <- glm(group.f ~ leftFtLen + armspan, binomial)
+mod2c <- glm(group.f ~ leftFtLen + seatHt, binomial)
+mod2d <- glm(group.f ~ leftFtLen + kneelHt, binomial)
+mod2e <- glm(group.f ~ leftFtLen + cubit, binomial)
+
+AIC(mod1f)
+AIC(mod2a)
+AIC(mod2b)
+AIC(mod2c)
+AIC(mod2d)
+AIC(mod2e)
+
+# best 2 variable model based on AIC 
+summary(mod2e)
+
+# Is it justified to add this variable, based on forward stepwise regression based on AIC?
+# Conclusion
+cat("The best two-variable model includes leftFtLen and cubit. The AIC value decreases from", AIC(mod1f), "to", AIC(mod2e), "allowing us to conclude that adding cubit is justified.")
+
+# f) Continue until no variables should be added and give the final prediction equation.
+
+mod3a <- glm(group.f ~ leftFtLen + cubit + height, binomial)
+mod3b <- glm(group.f ~ leftFtLen + cubit + armspan, binomial)
+mod3c <- glm(group.f ~ leftFtLen + cubit + seatHt, binomial)
+mod3d <- glm(group.f ~ leftFtLen + cubit + kneelHt, binomial)
+
+AIC(mod2e)
+AIC(mod3a)
+AIC(mod3b)
+AIC(mod3c)
+AIC(mod3d)
+
+summary(mod3b)
+
+mod4a <- glm(group.f ~ leftFtLen + cubit + armspan + height, binomial)
+mod4b <- glm(group.f ~ leftFtLen + cubit + armspan + seatHt, binomial)
+mod4c <- glm(group.f ~ leftFtLen + cubit + armspan + kneelHt, binomial)
+
+AIC(mod3b)
+AIC(mod4a)
+AIC(mod4b)
+AIC(mod4c)
+
+
+# final model
+summary(mod3b)
+
+# final prediction equation
+coef_final <- coef(mod3b)
+cat("Final Prediction Equation: log(odds) = ", coef_final[2], " * leftFtLen + ", coef_final[3], " * cubit + ", coef_final[4], " * armspan + ", coef_final[1], sep="")
+
+
+detach(data1)
+
+```
+
+## Part 2: Age, Motorcycle Riding and Erectile Dysfuntion
+```{r part2}
+
+# a) Read in the dataset
+data2 <- read.csv("http://www.stat.ufl.edu/~winner/data/motorcycleed.csv")
+head(data2)
+attach(data2)
+
+# b) The age groups are 1-4, which represent 20-29, 30-39, 40-49, 50-59. Create a new variable age that assigns to each subject the midpoint of their age range
+age <- 15 + (10*ageGrp)
+
+# c) Create a 0/1 dummy variable for erectile dysfunction (1 if EDGrp > 1, 0 if EDGrp = 1)
+ED <- ifelse(EDGrp==1,0,1)
+
+# d) Fit a simple logistic regression model relating incidence of ED to age and give the fitted probability equation.
+
+mod1 <- glm(ED ~ age, binomial)
+summary(mod1)
+
+coef_mod1 <- coef(mod1)
+cat("Fitted Probability Equation: P(ED) = exp(", coef_mod1[1], " + ", coef_mod1[2], " * age) / (1 + exp(", coef_mod1[1], " + ", coef_mod1[2], " * age))", sep="")
+
+# e) Add the motorcycle dummy variable to the model with age. Give the fitted probability equation.
+mod2 <- glm(ED ~ age + motorcycle, binomial)
+summary(mod2)
+
+coef_mod2 <- coef(mod2)
+cat("Fitted Probability Equation: P(ED) = exp(", coef_mod2[1], " + ", coef_mod2[2], " * age + ", coef_mod2[3], " * motorcycle) / (1 + exp(", coef_mod2[1], " + ", coef_mod2[2], " * age + ", coef_mod2[3], " * motorcycle))", sep="")
+
+# f) Add the cross-product term I(age*motorcycle) to the model. Is the interaction significant? Give the fitted equation.
+
+mod3 <- glm(ED ~ age * motorcycle, binomial)
+summary(mod3)
+
+# significance testing 
+anova(mod2, mod3, test="Chisq")
+
+# adding fitted equation
+coef_mod3 <- coef(mod3)
+cat("Fitted Equation: log(odds) = ", coef_mod3[1], " + ", coef_mod3[2], " * age + ", coef_mod3[3], " * motorcycle + ", coef_mod3[4], " * age * motorcycle", sep="")
+
+# conclusion on significance
+cat("Conclusion: since our p value (0.028628) is lower than our alpha (0.05) we can conclude that the interaction is significant meaning that the effect of age on ED differs between riders and non-riders")
+#g) Plot the final fitted model’s predicted probabilities versus age, with separate lines for motorcycle status.
+
+age.grid <- seq(20,60,0.01)
+b0 <- coef(mod3)[1]
+b1 <- coef(mod3)[2]
+b2 <- coef(mod3)[3]
+b3 <- coef(mod3)[4]
+
+logit.nm <- b0 + b1*age.grid
+logit.m <- b0 + b2 + (b1+b3)* age.grid
+
+prob.nm <- exp(logit.nm) / (1 + exp(logit.nm))
+prob.m <- exp(logit.m) / (1 + exp(logit.m))
+
+plot(prob.nm ~ age.grid, type="l", col="purple", lwd=2, ylim=c(0,1))
+lines(age.grid, prob.m, col="green3", lwd=2, type="l")
+
+```

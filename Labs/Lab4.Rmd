@@ -1,0 +1,160 @@
+---
+title: "STA 3180 - Lab 4"
+author: "Laurynas Kanopka"
+date: "2025-02-25"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+### Part 1 - Texas Monthly Weather at n=369 Weather Stations
+
+```{r Part1}
+
+tx.temps <- read.csv("http://www.stat.ufl.edu/~winner/data/TX_month_mean.csv")
+head(tx.temps)
+attach(tx.temps)
+
+## Center LAT, LONG, ELEV and divide Centered Elevation by 100
+LAT_C <- LAT - mean(LAT)
+ELEV_CC <- (ELEV - mean(ELEV)) / 100
+LONG_C <- LONG - mean(LONG)
+
+## Set up X data frame in order of best predictors for full data
+XY.df <- data.frame(Mean13,LAT_C,ELEV_CC,LONG_C,LONG_C^2,ELEV_CC^2,ELEV_CC*LONG_C,LAT_C*ELEV_CC,
+                LAT_C*LONG_C,LAT_C^2)
+
+mod.full <- lm(Mean13 ~ ., data=XY.df)
+summary(mod.full)
+
+## Obtain the RSS for all of the sequential models for the full data
+RSS.full <- rep(0,9)
+
+for (i1 in 1:9) {
+  tx.df <- XY.df[,1:(i1+1)]
+  mod <- lm(Mean13 ~ ., data=tx.df)
+  RSS.full[i1] <- sum((Mean13 - predict(mod))^2)
+}
+
+plot(RSS.full, type="b", col="blue", xlab="Number of Parameters", main="RSS for Full Data")
+
+RSS.full
+
+## Split into training (185) and test data. DO NOT SET A SEED.
+n <- nrow(tx.temps)
+train <- sample(n, (n/2)+1)
+
+## Obtain RSS for training and test samples and plot
+RSS.train <- rep(0,9)
+RSS.test <- rep(0,9)
+
+for (i1 in 1:9) {
+  tx.df <- XY.df[,1:(i1+1)] 
+  mod <- lm(Mean13 ~ ., data=tx.df, subset=train)
+  RSS.train[i1] <- sum((Mean13[train]-predict(mod))^2)
+  RSS.test[i1] <- sum((Mean13 - predict(mod,tx.df))[-train]^2)
+}
+
+plot(RSS.train, type="b", col="red", xlab="Number of Parameters", main="RSS for Training Data")
+
+plot(RSS.test, type="b", col="seagreen", xlab="Number of Parameters", main="RSS for Test Data")
+
+
+## Repeat this process 10 times and Obtain a plot with 10 sets of Test RSS's
+## Create a matrix, where each row is one of the 10 training/test sample sets
+## Use type="l" and set ylim=c(0,1000)
+
+RSS.test <- matrix(rep(0,9*10), ncol=9)
+
+for (i1 in 1:10) {
+  train <- sample(n, (n/2)+1)
+  for (i2 in 1:9) {
+  tx.df <- XY.df[,1:(i2+1)] 
+  mod <- lm(Mean13 ~ ., data=tx.df, subset=train)
+  RSS.test[i1, i2] <- sum((Mean13 - predict(mod,tx.df))[-train]^2)
+  }
+}
+
+plot(RSS.test[1,], type="l", col=2, ylim=c(0,1000), xlab="Number of Parameters", main="RSS for Test Data", lwd=1.5)
+for (i1 in 2:10) {
+  lines(RSS.test[i1,], col=i1+1, lwd=1.5)
+}
+
+library(boot)
+
+## LOOCV
+LOOCV.err <- rep(0,9)
+
+for (i1 in 1:9) {
+  tx.df <- XY.df[,1:(i1+1)]
+  glm.fit <- glm(Mean13 ~ ., data=tx.df)
+  LOOCV.err[i1] <- cv.glm(tx.df, glm.fit)$delta[1]
+}
+LOOCV.err
+
+plot(LOOCV.err, type="b", col="purple", xlab="Number of Parameters", main="RSS for LOOCV")
+
+## 10-fold Cross-Validation
+
+kfold.err <- rep(0,9)
+
+for (i1 in 1:9) {
+  tx.df <- XY.df[,1:(i1+1)]
+  glm.fit <- glm(Mean13 ~ ., data=tx.df)
+  kfold.err[i1] <- cv.glm(tx.df, glm.fit, K=10)$delta[1]
+}
+kfold.err
+
+plot(kfold.err, type="b", col="orange", xlab="Number of Parameters", main="RSS for kfold")
+
+detach(tx.temps)
+
+```
+
+## Part 2: Portfolio Selection and the Bootstrap
+
+```{r Part2}
+
+# library(ISLR2)
+library(boot)
+
+KO_CAG <- read.csv("http://users.stat.ufl.edu/~winner/data/KO_CAG_stkret.csv")
+#attach(KO_CAG)
+names(KO_CAG)
+
+# Stock return = SR = a*KO + (1-a)*CAG
+# V{SR} = a^2*V{KO} + (1-a)^2*V{CAG} + 2*a*(1-a)*COV{KO,CAG}
+# To minimize V{SR}, want a = [v{CAG}-COV{KO,CAG}]/[V{KO}+V{CAG}-2COV{KO,CAG}]
+
+KO_CAG$X <- KO_CAG$KO_ret
+KO_CAG$Y <- KO_CAG$CAG_ret
+
+alpha.fn <- function(data, index) {
+  X <- data$X[index]
+  Y <- data$Y[index]
+  (var(Y)-cov(X,Y)) / (var(X) + var(Y) - 2*cov(X,Y))
+}
+
+alpha.fn(KO_CAG, 1:824)
+
+B <- 10000
+n <- nrow(KO_CAG)
+alpha.boot <- rep(0, B)
+
+for (i1 in 1:B){
+  boot.sample <- sample(n, n, replace=TRUE)
+  alpha.boot[i1] <- alpha.fn(KO_CAG, boot.sample)
+}
+
+hist(alpha.boot, col="orange", border="black")
+abline(v=alpha.fn(KO_CAG, 1:824), col = "purple", lwd=3)
+
+sd(alpha.boot)
+
+quantile(alpha.boot, c(.025, .975))
+
+
+```
