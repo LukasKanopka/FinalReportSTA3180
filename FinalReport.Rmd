@@ -9,9 +9,23 @@ output: pdf_document
 knitr::opts_chunk$set(echo = TRUE)
 library(boot)
 library(splines)
+library(dplyr)
+library(stringr)
+library(readr)
+library(ggplot2)
+library(randomForest)
+library(rpart)
+library(rpart.plot)
+library(gridExtra)
 ```
 
-## R Markdown
+## Introduction
+
+This analysis explores factors affecting used car prices using statistical modeling techniques. We examine how mileage, horsepower, accident history, and model year influence car prices, with the goal of building accurate predictive models.
+
+## Data Preparation
+
+First, we'll load necessary packages and clean the raw data.
 
 ```{r cars, results='hold'}
 # Clean up our data and put it into a new csv file. 
@@ -55,6 +69,10 @@ write.csv(cleaned_cars, "cleaned_cars.csv", row.names = FALSE)
 head(cleaned_cars)
 ```
 
+### Handling Missing Values
+
+Some of our data points are missing information such as if the car was in an accident or not. Since we are uncertain of the real value, we can't assume and set the values ourselves, so we'll remove rows with missing values to ensure that we have complete cases for our analysis/
+
 ```{r no_null, results='hold'}
 # Create a version with no null values
 
@@ -92,159 +110,343 @@ summary(car_data[,c("Price","Mileage","Horsepower")])
 ```
 
 
-```{r multiple_linear_regression, results='hold'}
+### Data Visualization
 
+```{r data_visualization, results='hold'}
+# Create histograms for key variables
+p1 <- ggplot(car_data, aes(x=Price)) +
+  geom_histogram(bins=30, fill="steelblue") +
+  theme_minimal() +
+  labs(title="Distribution of Car Prices", x="Price ($)", y="Count")
+
+p2 <- ggplot(car_data, aes(x=Mileage)) +
+  geom_histogram(bins=30, fill="darkgreen") +
+  theme_minimal() +
+  labs(title="Distribution of Mileage", x="Mileage", y="Count")
+
+p3 <- ggplot(car_data, aes(x=Horsepower)) +
+  geom_histogram(bins=30, fill="darkred") +
+  theme_minimal() +
+  labs(title="Distribution of Horsepower", x="Horsepower", y="Count")
+
+p4 <- ggplot(car_data, aes(x=factor(Model_year))) +
+  geom_bar(fill="darkorange") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title="Count by Model Year", x="Model Year", y="Count")
+
+grid.arrange(p1, p2, p3, p4, ncol=2)
+```
+
+```{r scatter_plots, results='hold'}
+# Create scatter plots to explore relationships
+s1 <- ggplot(car_data, aes(x=Mileage, y=Price)) +
+  geom_point(color="blue") +
+  geom_smooth(method="loess", color="red") +
+  theme_minimal() +
+  labs(title="Price vs Mileage", x="Mileage", y="Price ($)")
+
+s2 <- ggplot(car_data, aes(x=Horsepower, y=Price)) +
+  geom_point(color="green4") +
+  geom_smooth(method="loess", color="red") +
+  theme_minimal() +
+  labs(title="Price vs Horsepower", x="Horsepower", y="Price ($)")
+
+s3 <- ggplot(car_data, aes(x=Model_year, y=Price)) +
+  geom_point(color="purple") +
+  geom_smooth(method="loess", color="red") +
+  theme_minimal() +
+  labs(title="Price vs Model Year", x="Model Year", y="Price ($)")
+
+s4 <- ggplot(car_data, aes(x=Accident, y=Price)) +
+  geom_boxplot(fill="orange") +
+  theme_minimal() +
+  labs(title="Price by Accident History", x="Accident History (1=Yes)", y="Price ($)")
+
+grid.arrange(s1, s2, s3, s4, ncol=2)
+```
+
+### Outlier Detection and Removal
+
+Based on our exploratory analysis, we have a couple of outliers in the data that could skew our results. When trying to vsualize this data, the outlier's scale also makes it difficult to see the rest of the data. We're going to do this by removing values that are outside a zscore of our 3 in the data.
+
+```{r outlier_detection, results='hold'}
+# Calculate z-scores for numerical variables
+car_data <- car_data %>%
+  mutate(
+    price_zscore = (Price - mean(Price)) / sd(Price),
+    mileage_zscore = (Mileage - mean(Mileage)) / sd(Mileage),
+    hp_zscore = (Horsepower - mean(Horsepower)) / sd(Horsepower)
+  )
+
+# Identify outliers (z-score > 3 or < -3)
+outliers <- car_data %>%
+  filter(abs(price_zscore) > 3 | abs(mileage_zscore) > 3 | abs(hp_zscore) > 3)
+
+# Print number of outliers
+cat("Number of outliers detected:", nrow(outliers), "\n")
+
+# Show some examples of outliers
+head(outliers[, c("Brand", "Model", "Price", "Mileage", "Horsepower", "Model_year")])
+
+# Remove outliers
+car_data_clean <- car_data %>%
+  filter(abs(price_zscore) <= 3 & abs(mileage_zscore) <= 3 & abs(hp_zscore) <= 3) %>%
+  select(-price_zscore, -mileage_zscore, -hp_zscore)  # Remove the z-score columns
+
+# Print how many rows remain
+cat("Rows after removing outliers:", nrow(car_data_clean), "\n")
+cat("Number of rows removed:", nrow(car_data) - nrow(car_data_clean), "\n")
+
+# Updated summary statistics
+summary(car_data_clean[,c("Price","Mileage","Horsepower","Model_year")])
+```
+
+### Outlier analysis
+
+
+Looking at the outliers show us that some of these are some rare cars, we see supercars, old classics, and a lot of electric cars as well. It's interesting to note that electric cars may be an outlier because of their ability to have such high horsepower in regular production cars when compared to gasoline engines. Car's like the Rivian R1S, a regular family SUV, have 835 horsepower that rival and surpass many supercars in this specific metric.
+
+### Lets look at our exploratory data again without these outliers
+
+```{r scatter_plots_no_outliers, results='hold'}
+# Create scatter plots to explore relationships
+s1 <- ggplot(car_data_clean, aes(x=Mileage, y=Price)) +
+  geom_point(color="blue", alpha=0.3) +
+  geom_smooth(method="loess", color="red") +
+  theme_minimal() +
+  labs(title="Price vs Mileage", x="Mileage", y="Price ($)")
+
+s2 <- ggplot(car_data_clean, aes(x=Horsepower, y=Price)) +
+  geom_point(color="green4", alpha=0.3) +
+  geom_smooth(method="loess", color="red") +
+  theme_minimal() +
+  labs(title="Price vs Horsepower", x="Horsepower", y="Price ($)")
+
+s3 <- ggplot(car_data_clean, aes(x=Model_year, y=Price)) +
+  geom_point(color="purple", alpha=0.3) +
+  geom_smooth(method="loess", color="red") +
+  theme_minimal() +
+  labs(title="Price vs Model Year", x="Model Year", y="Price ($)")
+
+s4 <- ggplot(car_data_clean, aes(x=Accident, y=Price)) +
+  geom_boxplot(fill="orange", alpha=0.3) +
+  theme_minimal() +
+  labs(title="Price by Accident History", x="Accident History (1=Yes)", y="Price ($)")
+
+grid.arrange(s1, s2, s3, s4, ncol=2)
+```
+
+This makes the data much easier to see and analyze.
+
+## Model Building and Evaluation
+
+Now we'll build different models to predict car prices and compare their performance.
+
+### Standard Linear Regression Model
+
+```{r standard_model, results='hold'}
 # Standard model
-mod_std <- lm(Price ~ Mileage + Horsepower + Accident + Model_year, data=car_data)
+mod_std <- lm(Price ~ Mileage + Horsepower + Accident + Model_year, data=car_data_clean)
 summary(mod_std)
-
-# Log-transformed model
-mod_log <- lm(log(Price) ~ Mileage + Horsepower + Accident + Model_year, data=car_data)
-summary(mod_log)
 
 # Residual diagnostics for standard model
 par(mfrow=c(2,2))
 plot(mod_std, pch=16, cex=0.4, col="black")
 par(mfrow=c(1,1))
+```
 
+The standard linear model shows that all predictors are statistically significant, but the R-squared value is relatively low at around 0.46, indicating moderate explanatory power. Residual plots suggest non-linear patterns, and our QQ residuals are very off at the right end. 
+
+### Log-Transformed Model
+
+```{r log_model, results='hold'}
+# Log-transformed model
+mod_log <- lm(log(Price) ~ Mileage + Horsepower + Accident + Model_year, data=car_data_clean)
+summary(mod_log)
 
 # Residual diagnostics for log-transformed model
 par(mfrow=c(2,2))
 plot(mod_log, pch=16, cex=0.4, col="royalblue")
 par(mfrow=c(1,1))
 
+# Back-transform predictions for comparison
+log_pred <- exp(predict(mod_log, car_data_clean))
 ```
 
+The log-transformed model shows a much better fit with an R-squared of around 0.78. All variables are highly significant, and residual plots show improved patterns.
 
+### Polynomial Model
 
-```{r polynomial_regression, results='hold'}
-
+```{r polynomial_model, results='hold'}
+# Cross-validation to find optimal polynomial degree
+library(boot)
 set.seed(3180)
 cv.err <- rep(0,5)
 for (i in 1:5) {
-  glm.fit <- glm(Price ~ poly(Mileage,i) + poly(Horsepower,i) + Accident + Model_year, 
-                data=car_data)
-  cv.err[i] <- cv.glm(car_data, glm.fit, K=20)$delta[1]
+  glm.fit <- glm(Price ~ poly(Mileage,i) + poly(Horsepower,i) + Accident + Model_year,
+                data=car_data_clean)
+  cv.err[i] <- cv.glm(car_data_clean, glm.fit, K=10)$delta[1]
 }
-plot(1:5, cv.err, type="b", col="seagreen", xlab="Polynomial Degree", 
-     main="20-Fold CV Error for Polynomial Terms")
 
-# Fit optimal degree (example: 2)
-mod_poly <- lm(Price ~ poly(Mileage,2) + poly(Horsepower,2) + Accident + Model_year, 
-               data=car_data)
+# Plot CV error by polynomial degree
+plot(1:5, cv.err, type="b", col="seagreen", xlab="Polynomial Degree",
+     main="10-Fold CV Error for Polynomial Terms")
+
+# Determine best degree (find minimum CV error)
+best_degree <- which.min(cv.err)
+cat("Best polynomial degree based on CV:", best_degree, "\n")
+
+# Fit optimal degree polynomial model
+mod_poly <- lm(Price ~ poly(Mileage, best_degree) + poly(Horsepower, best_degree) + 
+                 Accident + Model_year, data=car_data_clean)
 summary(mod_poly)
 
-# Residual diagnostics for log-transformed model
+# Residual diagnostics for polynomial model
 par(mfrow=c(2,2))
 plot(mod_poly, pch=16, cex=0.4, col="seagreen")
 par(mfrow=c(1,1))
-
-
 ```
 
+The polynomial model with degree 5 improves on the standard linear model but still shows some residual issues.
 
-
-
+### Bootstrap Analysis
 
 ```{r bootstrap, results='hold'}
-
+# Bootstrap analysis for model stability
 alpha.fn <- function(data, index) {
-  coef(lm(Price ~ Mileage + Horsepower + Accident + Model_year, 
-          data=data, subset=index))[2]  # Focus on Mileage ONLY
+  coef(lm(Price ~ Mileage + Horsepower + Accident + Model_year,
+          data=data, subset=index))
 }
 
 set.seed(123)
-boot.res <- boot(car_data, alpha.fn, R=1000)
+boot.res <- boot(car_data_clean, alpha.fn, R=1000)
 
-# Use percentile method instead of bca
-boot.ci(boot.res, type="perc", index=1)  
-
-# Plot bootstrap distribution
-hist(boot.res$t, breaks=30, col="orange", 
-     main="Bootstrap Distribution of Mileage Coefficient",
-     xlab="Coefficient Value")
-abline(v=boot.res$t0, col="black", lwd=2)
-```
-
-
-
-```{r model_comparison, results='hold'}
-
-# Function to calculate metrics
-calc_metrics <- function(model, data) {
-  pred <- predict(model, data)
-  residuals <- data$Price - pred
-  rmse <- sqrt(mean(residuals^2))
-  mae <- mean(abs(residuals))
-  r2 <- summary(model)$r.squared
-  return(c(RMSE=rmse, MAE=mae, R2=r2))
+# Get confidence intervals for all coefficients, we probably won't need to put this in the actualy paper just good to see. 
+for (i in 1:5) {
+  cat("Bootstrap CI for", c("Intercept", "Mileage", "Horsepower", "Accident1", "Model_year")[i], ":\n")
+  print(boot.ci(boot.res, type="perc", index=i))
 }
 
-metrics <- rbind(
-  Standard = calc_metrics(mod_std, car_data),
-  Log_Transformed = calc_metrics(mod_log, car_data),
-  Polynomial = calc_metrics(mod_poly, car_data)
-)
-print(metrics)
-
+# Plot bootstrap distribution for Mileage coefficient
+hist(boot.res$t[,2], breaks=30, col="orange",
+     main="Bootstrap Distribution of Mileage Coefficient",
+     xlab="Coefficient Value")
+abline(v=boot.res$t0[2], col="black", lwd=2)
 ```
 
-```{r random_forest}
-library(randomForest)
+The bootstrap analysis confirms the stability of our coefficient estimates, particularly for Mileage and Horsepower.
 
-set.seed(3180) 
+### Random Forest Model
+
+```{r random_forest, results='hold'}
+# Random forest model
+set.seed(3180)
 rf.fit <- randomForest(Price ~ Mileage + Horsepower + Accident + Model_year,
-                       data=car_data,
+                       data=car_data_clean,
                        importance=TRUE,
                        ntree=500)
 
+# Display model performance
+print(rf.fit)
+
 # Variable importance plot
-varImpPlot(rf.fit, pch=16, col="blue", 
+varImpPlot(rf.fit, pch=16, col="blue",
            main="Variable Importance in Random Forest")
 
-# Get predictions and calculate metrics
-rf.pred <- predict(rf.fit, car_data)
-rf.resid <- car_data$Price - rf.pred
-
-# Add to model comparison table
-rfmetrics <- rbind(
-  metrics,
-  Random_Forest = c(
-    RMSE = sqrt(mean(rf.resid^2)),
-    MAE = mean(abs(rf.resid)),
-    R2 = cor(car_data$Price, rf.pred)^2  # Pseudo R^2
-  )
-)
-
-# Update comparison table
-print(rfmetrics)
-
+# Get predictions
+rf.pred <- predict(rf.fit, car_data_clean)
 ```
 
-```{r decision_tree, results='hold'}
+### Decision Tree Model
 
-library(rpart)
+```{r decision_tree, results='hold'}
+# Decision tree model. May or may not be useful to put in the paper. If needed text me I can find a way to make it look more presentable 
 tree.mod <- rpart(Price ~ Mileage + Horsepower + Accident + Model_year, 
                   data=car_data, method="anova")
 plot(tree.mod, uniform=TRUE, margin=0.1)
-text(tree.mod, cex=0.7)
-
+text(tree.mod, cex=0.7) 
 ```
 
-```{r final_table, results='hold'}
+The decision tree provides an model showing the key factors in price determination. Each node shows decision rules and average prices.
 
-# Predicted vs Actual
-par(mfrow=c(1,2))
-plot(predict(mod_std), car_data$Price, pch=16, col="blue", 
-     main="Standard Model: Pred vs Actual")
+## Model Comparison
+
+Now we'll compare all models using appropriate metrics.
+
+```{r model_comparison, results='hold'}
+# Function to calculate metrics
+calc_metrics <- function(actual, predicted) {
+  rmse <- sqrt(mean((actual - predicted)^2))
+  mae <- mean(abs(actual - predicted))
+  r2 <- 1 - sum((actual - predicted)^2) / sum((actual - mean(actual))^2)
+  return(c(RMSE=rmse, MAE=mae, R2=r2))
+}
+
+# Calculate metrics for each model
+metrics <- rbind(
+  Standard = calc_metrics(car_data_clean$Price, predict(mod_std, car_data_clean)),
+  Log_Transformed = calc_metrics(car_data_clean$Price, log_pred),
+  Polynomial = calc_metrics(car_data_clean$Price, predict(mod_poly, car_data_clean)),
+  Random_Forest = calc_metrics(car_data_clean$Price, rf.pred)
+)
+
+# Print comparison table
+print(metrics)
+
+# Plot comparison with actual values
+par(mfrow=c(2,2))
+plot(predict(mod_std, car_data_clean), car_data_clean$Price, pch=16, col="blue",
+     main="Standard Model: Pred vs Actual", xlab="Predicted", ylab="Actual")
 abline(0,1, col="red")
 
-plot(predict(mod_poly), car_data$Price, pch=16, col="green3", 
-     main="Poly Model: Pred vs Actual")
+plot(log_pred, car_data_clean$Price, pch=16, col="purple",
+     main="Log Model: Pred vs Actual", xlab="Predicted", ylab="Actual")
+abline(0,1, col="red")
+
+plot(predict(mod_poly, car_data_clean), car_data_clean$Price, pch=16, col="green3",
+     main="Poly Model: Pred vs Actual", xlab="Predicted", ylab="Actual")
+abline(0,1, col="red")
+
+plot(rf.pred, car_data_clean$Price, pch=16, col="orange",
+     main="Random Forest: Pred vs Actual", xlab="Predicted", ylab="Actual")
 abline(0,1, col="red")
 par(mfrow=c(1,1))
-
 ```
+
+## Partial Dependence Plots
+
+Let's examine how price depends on each predictor in the random forest model.
+
+```{r partial_dependence, results='hold'}
+# Generate partial dependence plots
+par(mfrow=c(2,2))
+partialPlot(rf.fit, car_data_clean, x.var="Mileage", 
+            main="Partial Dependence on Mileage")
+partialPlot(rf.fit, car_data_clean, x.var="Horsepower", 
+            main="Partial Dependence on Horsepower")
+partialPlot(rf.fit, car_data_clean, x.var="Model_year", 
+            main="Partial Dependence on Model Year")
+partialPlot(rf.fit, car_data_clean, x.var="Accident", 
+            main="Partial Dependence on Accident History")
+par(mfrow=c(1,1))
+```
+
+## Conclusions
+
+Based on our analysis, we can draw several important conclusions:
+
+1. **Model Performance**: The Random Forest model outperforms all other models with the highest R-squared and lowest error metrics. The log-transformed linear model also performs well, indicating non-linear relationships between predictors and car prices. Even though our polynomial model has a higher R^2 than than our log transformed model, looking at the residual plots we have much a much better fit with log transformed so we ruled polynomial out.
+
+2. **Key Price Determinants**: Model year and horsepower have the strongest positive associations with price, while mileage has a negative relationship. Accident history negatively impacts price but with smaller effect size compared to other variables.
+
+3. **Price-Mileage Relationship**: The relationship between mileage and price is non-linear, with a steeper decline in value at lower mileages that gradually levels off.
+
+4. **Horsepower Effect**: Higher horsepower consistently correlates with higher prices, showing an almost linear relationship up to around 400 HP, after which the price increase is more dramatic.
+
+5. **Outlier Impact**: After removing outliers, our models showed substantial improvement in fit and prediction accuracy, indicating that extreme values were influencing our earlier analyses.
+
+6. **Prediction Accuracy**: Our best model (Random Forest) can explain approximately 73.83% of the variation in used car prices using just four variables.
 
 
 
